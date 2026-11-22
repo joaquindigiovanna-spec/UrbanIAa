@@ -12,9 +12,6 @@ marcado explícitamente como "sin IA" para que el sistema no se caiga.
 """
 import json
 import os
-import logging
-
-logger = logging.getLogger(__name__)
 
 CONTEXTO_CLUSTER = {
     "Gran Córdoba": "área metropolitana con presión inmobiliaria sobre la franja serrana y periurbana; "
@@ -46,20 +43,8 @@ def _detalle_para_prompt(cambios):
     lineas = [f"  - {p['tipo']}: {p['ha']} ha, a {p['dist_km']} km hacia el {p['dir_nombre']} del centro"
               f" (aprox. {int(p['pct_ex_verde'])} % antes era vegetación)" for p in zonas]
     dirs = [f"{d['nombre']}: {d['ha_urbanizadas']} ha" for d in cambios.get("direcciones", []) if d["ha_urbanizadas"] > 0]
-    texto = ("\n- Zonas de cambio más grandes (detectadas individualmente):\n" + "\n".join(lineas)
-             + "\n- Nueva superficie urbanizada por dirección desde el centro: " + ("; ".join(dirs) or "sin datos"))
-    coberturas = cambios.get("coberturas") or {}
-    if coberturas:
-        nombres = {"vegetacion": "vegetación", "urbano": "superficie urbana/construida",
-                   "agua": "agua", "suelo_otras": "suelo u otras coberturas"}
-        texto += "\n- Composición estimada del área válida por fecha (hectáreas y porcentaje):"
-        for periodo, etiqueta in (("inicio", "fecha inicial"), ("fin", "fecha final")):
-            clases = coberturas.get(periodo, {})
-            resumen = "; ".join(
-                f"{nombres.get(clase, clase)}: {valor['ha']} ha ({valor['pct']} %)"
-                for clase, valor in clases.items())
-            texto += f"\n  - {etiqueta}: {resumen or 'sin datos'}"
-    return texto
+    return ("\n- Zonas de cambio más grandes (detectadas individualmente):\n" + "\n".join(lineas)
+            + "\n- Nueva superficie urbanizada por dirección desde el centro: " + ("; ".join(dirs) or "sin datos"))
 
 
 def _prompt(ciudad, anos, stats, anillos, escenas, hay_imagenes, cambios=None):
@@ -137,7 +122,6 @@ def generar_informe(ciudad, anos, stats, anillos, escenas, imagenes=None, cambio
     clave = os.getenv("GEMINI_API_KEY", "")
     modelo = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     if not clave:
-        logger.warning("Gemini no está configurado: falta GEMINI_API_KEY. Se utilizará el informe por reglas.")
         return _informe_por_reglas(ciudad, anos, stats)
     try:
         from google import genai
@@ -164,7 +148,4 @@ def generar_informe(ciudad, anos, stats, anillos, escenas, imagenes=None, cambio
             "es_fallback": False,
         }
     except Exception:  # clave inválida, cuota, JSON mal formado, red...
-        # Antes se ocultaba por completo la causa y era imposible diagnosticar
-        # por qué el sistema pasaba silenciosamente al informe por reglas.
-        logger.exception("Falló la generación del informe con Gemini; se utilizará el informe por reglas.")
         return _informe_por_reglas(ciudad, anos, stats)

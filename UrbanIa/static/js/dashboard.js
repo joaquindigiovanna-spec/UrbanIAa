@@ -23,6 +23,9 @@
 
   function refrescar() {
     var lista = filtradas();
+    document.getElementById('mapa-cantidad').textContent = lista.length === 1
+      ? 'Se muestra 1 ciudad. Elija otro punto o ajuste los filtros.'
+      : 'Se muestran ' + lista.length + ' ciudades. Elija un punto o una ciudad de la lista.';
     selCiudad.textContent = '';
     lista.forEach(function (c) {
       var o = document.createElement('option'); o.value = c.id; o.textContent = c.nombre + ' (' + c.cluster + ')';
@@ -41,7 +44,7 @@
   fetch('/api/ciudades').then(function (r) { return r.json(); }).then(function (data) {
     ciudades = data;
     data.forEach(function (c) {
-      var m = L.circleMarker([c.lat, c.lng], { radius: 7, color: '#b91c1c', fillColor: '#7dd3fc', fillOpacity: 0.85 });
+      var m = L.circleMarker([c.lat, c.lng], { radius: 7, color: '#b4232f', fillColor: '#8bcde8', fillOpacity: 0.9 });
       var pop = document.createElement('div');
       var t = document.createElement('b'); t.textContent = c.nombre; pop.appendChild(t);
       pop.appendChild(document.createElement('br'));
@@ -51,7 +54,10 @@
       marcadores[c.id] = m;
     });
     refrescar();
-  }).catch(function () { err.textContent = 'No se pudieron cargar las ciudades.'; });
+  }).catch(function () {
+    err.textContent = 'No se pudieron cargar las ciudades.';
+    document.getElementById('mapa-cantidad').textContent = 'No se pudo cargar la lista de ciudades.';
+  });
 
   selCluster.addEventListener('change', refrescar);
   inBuscar.addEventListener('input', refrescar);
@@ -75,9 +81,9 @@
     var t0 = Date.now(); estado.hidden = false;
     reloj = setInterval(function () {
       var s = Math.round((Date.now() - t0) / 1000);
-      estadoTxt.textContent = 'Procesando imágenes satelitales y preparando el informe… ' + s + ' segundos';
+      estadoTxt.textContent = 'Descargando imágenes Sentinel-2, clasificando y generando informe con IA… ' + s + ' s';
     }, 1000);
-    estadoTxt.textContent = 'Paso 1 de 3: buscando imágenes satelitales de los dos años…';
+    estadoTxt.textContent = 'Consultando el catálogo satelital…';
   }
   function terminarEstado() { clearInterval(reloj); estado.hidden = true; }
 
@@ -104,25 +110,15 @@
       return r.json().catch(function () { return { error: 'El servidor tardó demasiado o no respondió. Pruebe con un radio menor.' }; })
         .then(function (j) { return { ok: r.ok, datos: j }; });
     }).then(function (res) {
-      if (!res.ok) { err.textContent = res.datos.error || 'El servidor no pudo completar el análisis.'; return; }
-
-      /* La API ya respondió correctamente. Separar errores de visualización de
-         errores de red evita mostrar falsamente "No se pudo conectar" cuando
-         el problema está en Leaflet, Chart.js o en el render del resultado. */
-      try {
-        UrbaniaVisor.mostrar(null, res.datos);
-        var p = document.getElementById('enlace-detalle');
-        p.textContent = '';
-        var a = document.createElement('a'); a.href = '/analisis/' + res.datos.id; a.textContent = 'Abrir análisis guardado en el historial';
-        p.appendChild(a); p.hidden = false;
-        document.getElementById('resultado').scrollIntoView({ behavior: 'smooth' });
-      } catch (errorRender) {
-        console.error('UrbanIA: el análisis llegó, pero falló su visualización.', errorRender);
-        err.textContent = 'El análisis se realizó y quedó guardado, pero hubo un problema al mostrar los resultados. Recargue la página; si continúa, comparta el error de la consola.';
-      }
-    }).catch(function (errorRed) {
-      console.error('UrbanIA: error de comunicación con /api/analizar.', errorRed);
-      err.textContent = 'No se pudo completar la comunicación con el servidor. Revise la conexión e inténtelo nuevamente.';
+      if (!res.ok) { err.textContent = res.datos.error || 'Error al analizar.'; return; }
+      UrbaniaVisor.mostrar(mapa, res.datos);
+      var p = document.getElementById('enlace-detalle');
+      p.textContent = '';
+      var a = document.createElement('a'); a.href = '/analisis/' + res.datos.id; a.textContent = 'Abrir análisis guardado en el historial';
+      p.appendChild(a); p.hidden = false;
+      document.getElementById('resultado').scrollIntoView({ behavior: 'smooth' });
+    }).catch(function () {
+      err.textContent = 'No se pudo conectar con el servidor.';
     }).finally(function () { btn.disabled = false; terminarEstado(); });
   });
 })();

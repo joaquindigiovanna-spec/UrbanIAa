@@ -12,7 +12,7 @@
     new Chart(rank, {
       type: 'bar',
       data: { labels: top.map(function (c) { return c.ciudad; }),
-        datasets: [{ label: 'Nueva urbanización (ha)', data: top.map(function (c) { return c.ha_urbanizadas; }), backgroundColor: '#dc2626', borderColor: '#333', borderWidth: 1 }] },
+        datasets: [{ label: 'Nueva urbanización (ha)', data: top.map(function (c) { return c.ha_urbanizadas; }), backgroundColor: '#b4232f', borderColor: '#8f1b25', borderWidth: 1 }] },
       options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
     });
   }
@@ -23,8 +23,8 @@
       type: 'bar',
       data: { labels: datos.clusters.map(function (c) { return c.cluster; }),
         datasets: [
-          { label: 'Nueva urbanización (ha)', data: datos.clusters.map(function (c) { return c.ha_urbanizadas; }), backgroundColor: '#dc2626', borderColor: '#333', borderWidth: 1 },
-          { label: 'Vegetación perdida (ha)', data: datos.clusters.map(function (c) { return c.ha_verdes_perdidas; }), backgroundColor: '#ffffff', borderColor: '#333', borderWidth: 1 }] },
+          { label: 'Nueva urbanización (ha)', data: datos.clusters.map(function (c) { return c.ha_urbanizadas; }), backgroundColor: '#b4232f', borderColor: '#8f1b25', borderWidth: 1 },
+          { label: 'Vegetación perdida (ha)', data: datos.clusters.map(function (c) { return c.ha_verdes_perdidas; }), backgroundColor: '#8bcde8', borderColor: '#147da8', borderWidth: 1 }] },
       options: { scales: { y: { beginAtZero: true } } }
     });
   }

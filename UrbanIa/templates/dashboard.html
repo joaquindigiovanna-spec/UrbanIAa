@@ -5,51 +5,61 @@
 {% endblock %}
 {% block contenido %}
 <h1>Panel de análisis urbano</h1>
-<p class="subtitulo">Analizá cómo cambió una ciudad entre dos años usando imágenes satelitales. No necesitás conocimientos técnicos: seguí los pasos y el sistema te guía.</p>
-<div class="aviso aviso-info" role="note"><strong>¿Cómo empezar?</strong> 1) Elegí una ciudad. 2) Seleccioná los años. 3) Elegí el área. 4) Presioná “Iniciar análisis”. Al terminar vas a poder comparar los mapas y leer qué cambió.</div>
+<details class="guia-inicio">
+  <summary>¿Es la primera vez? Guía rápida</summary>
+  <ol>
+    <li>Busque una ciudad o elija un punto en el mapa.</li>
+    <li>Seleccione los años y el área alrededor del centro que quiere analizar.</li>
+    <li>Inicie el análisis y espere a que se carguen las imágenes satelitales.</li>
+    <li>Compare los años moviendo el separador; después abra “Cambios detectados” para ver las zonas y su explicación.</li>
+  </ol>
+  <p class="chico">Los resultados son estimaciones. En “Estadísticas” puede consultar qué parte del área tuvo imágenes válidas.</p>
+</details>
 <div class="paneles">
   <aside class="tarjeta lateral" aria-label="Parámetros del análisis">
     <h2>Parámetros</h2>
     <form id="form-analisis" novalidate>
-      <label for="f-cluster">Región o grupo de ciudades <span class="chico">(opcional)</span></label>
+      <label for="f-cluster">Cluster territorial</label>
       <select id="f-cluster">
         <option value="">Todos los clusters</option>
         {% for c in clusters %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
       </select>
+      <p class="chico ayuda-form">Un cluster es un grupo de ciudades de la provincia. Este filtro solo cambia qué puntos se muestran en el mapa.</p>
 
-      <label for="f-buscar">Encontrar una ciudad</label>
+      <label for="f-buscar">Buscar ciudad</label>
       <input id="f-buscar" type="search" placeholder="Ej.: Arroyito" autocomplete="off">
 
-      <label for="f-ciudad">1. ¿Qué ciudad querés analizar?</label>
+      <label for="f-ciudad">Ciudad</label>
       <select id="f-ciudad" required></select>
 
       <div class="fila">
         <div><label for="f-ini">Año inicial</label>
           <input id="f-ini" type="number" min="{{ anio_min }}" max="{{ anio_max }}" value="2018" required></div>
-        <div><label for="f-fin">Año final (después)</label>
+        <div><label for="f-fin">Año final</label>
           <input id="f-fin" type="number" min="{{ anio_min }}" max="{{ anio_max }}" value="{{ anio_max - 1 }}" required></div>
       </div>
 
-      <label for="f-estacion">3. ¿En qué época del año?</label>
+      <label for="f-estacion">Época del año a comparar</label>
       <select id="f-estacion">
         {% for k, v in estaciones.items() %}<option value="{{ k }}">{{ v[2] }}</option>{% endfor %}
       </select>
 
-      <label for="f-radio">4. ¿Qué tamaño de zona querés estudiar?</label>
+      <label for="f-radio">Radio de análisis</label>
       <select id="f-radio">
         <option value="2">2 km (4 × 4 km, más rápido)</option>
         <option value="3" selected>3 km (6 × 6 km)</option>
         <option value="4">4 km (8 × 8 km)</option>
         <option value="5">5 km (10 × 10 km, más lento)</option>
       </select>
+      <p class="chico ayuda-form">El radio indica cuánto territorio alrededor del centro de la ciudad se analiza. Por ejemplo, 3 km cubren un cuadrado de unos 6 × 6 km.</p>
 
-      <label for="f-titulo">Nombre para guardar este análisis (opcional)</label>
+      <label for="f-titulo">Título (opcional)</label>
       <input id="f-titulo" type="text" maxlength="150" placeholder="Ej.: Expansión norte de la ciudad">
 
       <p class="error-campo" id="error-form" role="alert"></p>
       {% if puede_analizar %}
-        <button class="btn btn-bloque" id="btn-analizar" type="submit">Iniciar análisis</button>
-        <p class="chico">El sistema buscará imágenes satelitales, medirá los cambios y preparará un informe. Puede tardar unos minutos. No cierres esta página.</p>
+        <button class="btn btn-bloque" id="btn-analizar" type="submit">Analizar con imágenes satelitales e IA</button>
+        <p class="chico">Descarga imágenes reales Sentinel-2 y genera el informe. Puede tardar entre 20 y 90 segundos.</p>
       {% else %}
         <div class="aviso aviso-info">Su rol (<strong>Consultor</strong>) es de solo lectura: puede explorar el mapa y el
           <a href="{{ url_for('historial') }}">historial</a>, pero no generar análisis nuevos.</div>
@@ -61,6 +71,11 @@
   </aside>
 
   <section class="mapa-col">
+    <div class="mapa-intro">
+      <h2 id="mapa-titulo">Mapa de ciudades</h2>
+      <p id="mapa-descripcion">Cada punto marca una ciudad. Selecciónela en el mapa o en la lista para centrarla. Puede acercar, alejar y cambiar entre calles e imágenes satelitales.</p>
+      <p id="mapa-cantidad" class="chico" role="status" aria-live="polite">Cargando ciudades…</p>
+    </div>
     <div id="mapa" role="application" aria-label="Mapa de ciudades de Córdoba"></div>
     <p id="enlace-detalle" class="chico" hidden></p>
   </section>
@@ -73,6 +88,6 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>window.UrbaniaCfg = { csrf: "{{ csrf_token() }}", anioMin: {{ anio_min }}, anioMax: {{ anio_max }},
   puedeAnalizar: {{ 'true' if puede_analizar else 'false' }}, urlDetalle: "{{ url_for('historial') }}" };</script>
-<script src="{{ url_for('static', filename='js/visor.js') }}?v=20261118-paleta"></script>
-<script src="{{ url_for('static', filename='js/dashboard.js') }}?v=20261118-paleta"></script>
+<script src="{{ url_for('static', filename='js/visor.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}

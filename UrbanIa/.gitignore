@@ -2,9 +2,15 @@
 .env.*
 !.env.example
 .venv/
+venv/
 __pycache__/
 *.py[cod]
 instance/
 *.db
 *.sqlite
 *.sqlite3
+*.log
+.pytest_cache/
+.mypy_cache/
+.DS_Store
+Thumbs.db

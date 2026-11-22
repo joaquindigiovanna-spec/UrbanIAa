@@ -84,17 +84,8 @@ def semilla():
             ("Consultor Demo", "consultor@urbania.local", "CONSULTOR_PASSWORD", "Cons1234!", "Consultor"),
         ]
         for nombre, email, var, defecto, rol in usuarios:
-            clave = os.getenv(var)
-            if not clave:
-                if os.getenv("RENDER") or os.getenv("APP_ENV") == "production":
-                    raise RuntimeError(
-                        f"Falta configurar {var} en el entorno. Defina una contraseña segura antes de iniciar."
-                    )
-                clave = defecto  # Solo para desarrollo local.
-            if len(clave) < 12 and (os.getenv("RENDER") or os.getenv("APP_ENV") == "production"):
-                raise RuntimeError(f"{var} debe tener al menos 12 caracteres en producción.")
             db.session.add(Usuario(rol_id=roles[rol], nombre=nombre, email=email,
-                                   password_hash=generate_password_hash(clave)))
+                                   password_hash=generate_password_hash(os.getenv(var, defecto))))
         db.session.commit()
 
     if not AnalisisUrbano.query.filter_by(es_demo=True).first():

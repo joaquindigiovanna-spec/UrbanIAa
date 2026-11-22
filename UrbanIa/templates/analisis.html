@@ -13,6 +13,14 @@
     Sirve para probar el sistema.</div>
 {% endif %}
 
+{% if datos.tiene_imagenes %}
+<div class="mapa-intro">
+  <h2 id="mapa-titulo">Mapa de cambios en {{ a.ciudad.nombre }}</h2>
+  <p id="mapa-descripcion">Compare las imágenes de los años analizados. La pestaña “Cambios detectados” explica los colores del mapa.</p>
+</div>
+<div id="mapa" role="application" aria-label="Mapa del análisis"></div>
+{% endif %}
+
 {% include "_resultado.html" %}
 
 <div class="tarjeta">
@@ -50,11 +58,16 @@
 {% block scripts %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="{{ url_for('static', filename='js/visor.js') }}?v=20261118-paleta"></script>
+<script src="{{ url_for('static', filename='js/visor.js') }}"></script>
 <script>
   (function () {
     var datos = JSON.parse(document.getElementById('datos-analisis').textContent);
-    UrbaniaVisor.mostrar(null, datos);
+    var mapa = null;
+    if (datos.tiene_imagenes) {
+      mapa = L.map('mapa');
+      UrbaniaVisor.baseMapas(mapa);
+    }
+    UrbaniaVisor.mostrar(mapa, datos);
   })();
 </script>
 <script src="{{ url_for('static', filename='js/validar.js') }}"></script>

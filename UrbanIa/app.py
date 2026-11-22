@@ -9,7 +9,6 @@ from functools import wraps
 from flask import (Flask, Response, abort, flash, g, jsonify, redirect,
                    render_template, request, session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
-from sqlalchemy import text
 
 import analisis as an
 import ia
@@ -166,17 +165,6 @@ def logout():
 
 
 # ================================================================== páginas
-@app.get("/health")
-def health():
-    """Comprobación sencilla para el servicio de alojamiento."""
-    try:
-        db.session.execute(text("SELECT 1"))
-        return jsonify(status="ok"), 200
-    except Exception:
-        app.logger.exception("Falló la comprobación de la base de datos")
-        return jsonify(status="error"), 503
-
-
 @app.route("/")
 def inicio():
     return redirect(url_for("dashboard") if g.user else url_for("login"))
@@ -478,19 +466,11 @@ def analisis_regenerar(aid):
     a = db.get_or_404(AnalisisUrbano, aid)
     if not puede_modificar(a):
         abort(403)
-    imagen_inicio = ImagenAnalisis.query.filter_by(analisis_id=a.id, tipo="rgb_inicio").first()
-    imagen_fin = ImagenAnalisis.query.filter_by(analisis_id=a.id, tipo="rgb_fin").first()
-    imagen_cambio = ImagenAnalisis.query.filter_by(analisis_id=a.id, tipo="cambio").first()
     imgs = []
-    if imagen_inicio and imagen_fin:
-        imgs = [
-            an.miniatura_png(imagen_inicio.contenido),
-            an.compuesto_png(imagen_fin.contenido, imagen_cambio.contenido)
-            if imagen_cambio else an.miniatura_png(imagen_fin.contenido),
-        ]
-    elif imagen_inicio or imagen_fin:
-        imagen = imagen_inicio or imagen_fin
-        imgs = [an.miniatura_png(imagen.contenido)]
+    for tipo in ("rgb_inicio", "rgb_fin"):
+        i = ImagenAnalisis.query.filter_by(analisis_id=a.id, tipo=tipo).first()
+        if i:
+            imgs.append(i.contenido)
     inf = ia.generar_informe(
         {"nombre": a.ciudad.nombre, "cluster": a.ciudad.cluster, "poblacion": a.ciudad.poblacion},
         (a.ano_inicio, a.ano_fin), _stats_de(a), json.loads(a.anillos_json or "[]"),

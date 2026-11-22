@@ -24,37 +24,31 @@
     {# ---- Pestaña 1: Antes y después ---- #}
     <div role="tabpanel" id="panel-antes" aria-labelledby="tab-antes" tabindex="0">
       <h3 class="sub-h">Compare las dos imágenes satelitales</h3>
-      <p class="chico">Ahora puedes ver los dos años al mismo tiempo. Los mapas se mueven juntos: acercar o desplazar uno también actualiza el otro.</p>
-      <div class="comparacion-mapas">
-        <section class="mapa-anual">
-          <h4>Año inicial: <span id="lbl-ini-b"></span></h4>
-          <div id="mapa-ini" class="mapa-comparativo" role="application" aria-label="Mapa satelital del año inicial"></div>
-        </section>
-        <section class="mapa-anual">
-          <h4>Año final: <span id="lbl-fin-b"></span></h4>
-          <div id="mapa-fin" class="mapa-comparativo" role="application" aria-label="Mapa satelital del año final"></div>
-        </section>
+      <p class="chico">El mapa se divide entre los dos años: a la izquierda del separador queda el año inicial y a la derecha el final. Mueva el control para desplazar el separador. Los botones muestran un solo año.</p>
+      <div class="botonera">
+        <button type="button" class="btn btn-borde btn-chico" id="btn-ver-ini">Ver año <span id="lbl-ini-b"></span></button>
+        <button type="button" class="btn btn-borde btn-chico" id="btn-ver-fin">Ver año <span id="lbl-fin-b"></span></button>
       </div>
-      <div class="control-equilibrio">
-        <label for="cruce"><strong>Equilibrio visual entre los años</strong></label>
-        <div class="etiquetas-equilibrio"><span id="lbl-ini"></span><span id="lbl-fin"></span></div>
-        <input type="range" id="cruce" min="0" max="100" value="50" step="1" aria-label="Elegir el protagonismo visual de cada año">
-        <p class="chico" id="texto-equilibrio">Ambos años tienen el mismo protagonismo visual.</p>
+      <div class="controles-visor">
+        <label for="cruce">Separador: año <span id="lbl-ini"></span> a la izquierda · año <span id="lbl-fin"></span> a la derecha</label>
+        <input type="range" id="cruce" min="0" max="100" value="50" aria-label="Mover el separador entre la imagen inicial y la imagen final">
+        <label class="check"><input type="checkbox" id="ver-cambio"> Superponer los cambios</label>
       </div>
-      <label class="check"><input type="checkbox" id="ver-cambio"> Mostrar los cambios detectados en el mapa del año final</label>
+      <p id="mezcla-anios" class="chico" aria-live="polite"></p>
     </div>
 
     {# ---- Pestaña 2: Cambios detectados ---- #}
     <div role="tabpanel" id="panel-cambios" aria-labelledby="tab-cambios" tabindex="0" hidden>
       <h3 class="sub-h">Qué cambió entre <span class="ano-ini"></span> y <span class="ano-fin"></span></h3>
-      <p class="chico">El mapa muestra la imagen del año final con los cambios resaltados.</p>
+      <p class="chico">El mapa muestra la imagen del año final. Los colores señalan cambios estimados desde el año inicial. El norte está arriba: este es derecha, oeste izquierda y las diagonales quedan entre ambos.</p>
       <ul class="leyenda" aria-label="Leyenda de colores">
-        <li><i style="background:#dc2626"></i> Nueva urbanización (suelo que no era vegetación)</li>
-        <li><i style="background:#991b1b"></i> Vegetación convertida a urbano</li>
-        <li><i style="background:#fff;border:1px solid #333"></i> Vegetación perdida</li>
-        <li><i style="background:#7dd3fc"></i> Vegetación ganada</li>
+        <li><i style="background:#D55E00"></i> Nueva urbanización (aparecen construcciones o suelo urbano)</li>
+        <li><i style="background:#7A1F5C"></i> Vegetación que pasó a ser suelo urbano</li>
+        <li><i style="background:#F0E442;border:1px solid #333"></i> Vegetación que ya no se detecta</li>
+        <li><i style="background:#0072B2"></i> Vegetación que ahora se detecta</li>
         <li><i style="background:#808080"></i> Sin dato (nubes o sombras)</li>
       </ul>
+      <p class="chico">Una hectárea equivale a 10.000 m², aproximadamente 1,4 canchas de fútbol. Las distancias se miden desde el centro de la ciudad. Los contornos de las zonas son aproximados.</p>
       <div id="cambios-contenido">
         <p id="cambios-conteo" class="resumen-simple"></p>
         <div class="filtro-zonas">
@@ -67,11 +61,12 @@
           </select>
         </div>
         <div class="tabla-scroll"><table id="tabla-zonas">
-          <caption class="chico">Zonas de cambio más grandes (mayores a <span id="min-ha"></span> ha). Cada fila indica el tipo de cambio, su tamaño y dónde encontrarlo.</caption>
-          <thead><tr><th scope="col">#</th><th scope="col">Tipo de cambio</th><th scope="col">Superficie (ha)</th><th scope="col">Ubicación respecto del centro</th><th scope="col">Qué significa</th><th scope="col">Antes era vegetación</th><th scope="col">Acción</th></tr></thead>
+          <caption class="chico">Zonas de cambio más grandes (mayores a <span id="min-ha"></span> ha). “Ver punto aproximado” marca una referencia, no el contorno exacto; las hectáreas son estimadas.</caption>
+          <thead><tr><th scope="col">#</th><th scope="col">Tipo de cambio</th><th scope="col">Superficie estimada (ha)</th><th scope="col">Ubicación desde el centro</th><th scope="col">Antes tenía vegetación</th><th scope="col">Acción</th></tr></thead>
           <tbody></tbody>
         </table></div>
         <h3 class="sub-h">Hacia dónde creció la ciudad</h3>
+        <p class="chico">Cada dirección indica el lado de la ciudad visto desde su centro (por ejemplo, “noreste” es hacia arriba y a la derecha del mapa).</p>
         <canvas id="graf-dir" height="240" role="img" aria-label="Gráfico de barras de hectáreas por dirección"></canvas>
         <details class="alt-tabla"><summary>Ver estos datos en una tabla</summary><div id="alt-dir"></div></details>
         <div class="botonera">
@@ -85,7 +80,11 @@
     {# ---- Pestaña 3: Estadísticas ---- #}
     <div role="tabpanel" id="panel-stats" aria-labelledby="tab-stats" tabindex="0" hidden>
       <h3 class="sub-h">Cifras principales (estimadas)</h3>
+      <p class="chico">Para imaginar las superficies: 1 hectárea (ha) son 10.000 m², aproximadamente 1,4 canchas de fútbol.</p>
       <div class="grid-datos" id="res-cifras"></div>
+      <div class="aviso aviso-info" role="note">
+        <strong>Área comparable:</strong> <span id="calidad-analisis"></span>
+      </div>
       <h3 class="sub-h">Indicadores</h3>
       <div class="grid-datos" id="res-indicadores"></div>
       <div class="grillas-2">
@@ -96,12 +95,6 @@
           <canvas id="graf-anillos" height="220" role="img" aria-label="Gráfico de barras del porcentaje de vegetación por anillo"></canvas>
           <details class="alt-tabla"><summary>Ver estos datos en una tabla</summary><div id="alt-anillos"></div></details></div>
       </div>
-      <section id="caja-coberturas" class="coberturas">
-        <h3 class="sub-h">Cobertura física del área analizada</h3>
-        <p class="chico">Comparación del área válida sin nubes. “Suelo / otras coberturas” reúne píxeles que no se clasificaron como vegetación, urbano o agua; no significa que todo sea suelo desnudo.</p>
-        <canvas id="graf-coberturas" height="150" role="img" aria-label="Gráfico apilado de la cobertura física estimada"></canvas>
-        <details class="alt-tabla"><summary>Ver hectáreas y porcentajes en una tabla</summary><div id="alt-coberturas"></div></details>
-      </section>
     </div>
 
     {# ---- Pestaña 4: Informe ---- #}

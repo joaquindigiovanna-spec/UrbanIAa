@@ -3,9 +3,9 @@
    Todo texto proveniente de datos se inserta con textContent (previene XSS). */
 var UrbaniaVisor = (function () {
   'use strict';
-  var capas = {}, graficos = {}, mapaIni = null, mapaFin = null, d = null, resaltado = null, listo = false;
+  var capas = {}, graficos = {}, mapa = null, d = null, resaltado = null, lineaComparacion = null, guiaMapa = null, listo = false;
   var ORDEN = ['tab-antes', 'tab-cambios', 'tab-stats', 'tab-informe', 'tab-fuentes'];
-  var COLOR_TIPO = { 'Nueva urbanización': '#dc2626', 'Pérdida de vegetación': '#ffffff', 'Ganancia de vegetación': '#7dd3fc' };
+  var COLOR_TIPO = { 'Nueva urbanización': '#D55E00', 'Pérdida de vegetación': '#F0E442', 'Ganancia de vegetación': '#0072B2' };
 
   function $(id) { return document.getElementById(id); }
   function fmt(n, suf) {
@@ -21,52 +21,115 @@ var UrbaniaVisor = (function () {
     var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       { maxZoom: 19, attribution: 'Imágenes: Esri, Maxar, Earthstar Geographics' });
     osm.addTo(m);
-    L.control.layers({ 'Calles (OpenStreetMap)': osm, 'Satélite (Esri)': sat }).addTo(m);
+    L.control.layers({ 'Mapa de calles': osm, 'Vista satelital': sat }).addTo(m);
+  }
+
+  function crearGuiaMapa() {
+    if (guiaMapa) return;
+    guiaMapa = L.control({ position: 'bottomleft' });
+    guiaMapa.onAdd = function () {
+      var caja = L.DomUtil.create('section', 'guia-mapa');
+      caja.setAttribute('aria-label', 'Cómo leer el mapa');
+      caja.innerHTML = '<strong class="guia-mapa-titulo">Cómo leer este mapa</strong>' +
+        '<p class="guia-mapa-texto"></p>' +
+        '<ul class="leyenda-mapa" hidden>' +
+        '<li><i class="swatch cambio-urbano"></i>Nueva urbanización</li>' +
+        '<li><i class="swatch cambio-verde-urbano"></i>Vegetación convertida a urbano</li>' +
+        '<li><i class="swatch cambio-perdida"></i>Vegetación perdida</li>' +
+        '<li><i class="swatch cambio-ganancia"></i>Vegetación ganada</li>' +
+        '<li><i class="swatch cambio-sin-dato"></i>Sin dato (nubes o sombras)</li>' +
+        '</ul><span class="guia-mapa-orientacion" hidden>Norte ↑ arriba · Este → derecha · Oeste ← izquierda</span>';
+      L.DomEvent.disableClickPropagation(caja);
+      L.DomEvent.disableScrollPropagation(caja);
+      return caja;
+    };
+    guiaMapa.addTo(mapa);
+  }
+
+  function actualizarGuiaMapa(modo) {
+    if (!guiaMapa || !guiaMapa.getContainer()) return;
+    var caja = guiaMapa.getContainer();
+    var texto = caja.querySelector('.guia-mapa-texto');
+    var leyenda = caja.querySelector('.leyenda-mapa');
+    var orientacion = caja.querySelector('.guia-mapa-orientacion');
+    if (modo === 'cambios') {
+      texto.textContent = 'Imagen ' + d.ano_fin + '. Los colores muestran cambios estimados desde ' + d.ano_inicio + '. El contorno de una zona es aproximado.';
+      leyenda.hidden = false;
+      orientacion.hidden = false;
+      $('mezcla-anios').textContent = 'Vista de cambios: se muestra la imagen ' + d.ano_fin + ' con los cambios estimados desde ' + d.ano_inicio + '.';
+      return;
+    }
+    var mezcla = Number($('cruce').value);
+    texto.textContent = 'A la izquierda del separador se ve el año ' + d.ano_inicio +
+      '; a la derecha, el año ' + d.ano_fin + '. El año final ocupa ' + mezcla + '% del ancho.';
+    var superponer = $('ver-cambio').checked;
+    if (superponer) texto.textContent += ' También se superponen los cambios detectados.';
+    leyenda.hidden = !superponer;
+    orientacion.hidden = true;
+    $('mezcla-anios').textContent = 'Izquierda: ' + d.ano_inicio + ' · Derecha: ' + d.ano_fin +
+      ' · El año final ocupa ' + mezcla + '% del ancho.';
+    $('cruce').setAttribute('aria-valuetext', 'El año ' + d.ano_inicio + ' se ve a la izquierda y el año ' +
+      d.ano_fin + ' a la derecha. El año final ocupa ' + mezcla + ' por ciento del ancho.');
   }
 
   function limpiarCapas() {
-    [mapaIni, mapaFin].forEach(function (m) { if (m) { m.off(); m.remove(); } });
-    mapaIni = mapaFin = null; capas = {}; resaltado = null;
+    Object.keys(capas).forEach(function (k) { if (mapa && mapa.hasLayer(capas[k])) mapa.removeLayer(capas[k]); });
+    capas = {};
+    if (resaltado && mapa) { mapa.removeLayer(resaltado); }
+    if (lineaComparacion && mapa) { mapa.removeLayer(lineaComparacion); }
+    resaltado = null;
+    lineaComparacion = null;
   }
 
-  function actualizarEquilibrio() {
+  function actualizarComparacion() {
+    if (!capas.ini || !capas.fin) return;
     var valor = Number($('cruce').value);
-    if (capas.ini) capas.ini.setOpacity(1 - valor / 100);
-    if (capas.fin) capas.fin.setOpacity(valor / 100);
-    $('texto-equilibrio').textContent = valor === 50
-      ? 'Ambos años tienen el mismo protagonismo visual.'
-      : valor < 50
-        ? d.ano_inicio + ' tiene más protagonismo (' + (100 - valor) + ' %) y ' + d.ano_fin + ' menos (' + valor + ' %).'
-        : d.ano_fin + ' tiene más protagonismo (' + valor + ' %) y ' + d.ano_inicio + ' menos (' + (100 - valor) + ' %).';
+    capas.fin.setOpacity(1);
+    capas.fin.getElement().style.clipPath = 'inset(0 0 0 ' + (100 - valor) + '%)';
+    var sur = d.bounds[0][0], oeste = d.bounds[0][1], norte = d.bounds[1][0], este = d.bounds[1][1];
+    var longitud = oeste + (este - oeste) * valor / 100;
+    var puntos = [[sur, longitud], [norte, longitud]];
+    if (!lineaComparacion) {
+      lineaComparacion = L.polyline(puntos, {
+        color: '#b4232f', weight: 4, dashArray: '7 5', interactive: false
+      }).addTo(mapa);
+    } else {
+      lineaComparacion.setLatLngs(puntos);
+      if (!mapa.hasLayer(lineaComparacion)) lineaComparacion.addTo(mapa);
+    }
+    lineaComparacion.bringToFront();
   }
 
-  function sincronizarMapas() {
-    var bloqueado = false;
-    function copiar(origen, destino) {
-      origen.on('moveend', function () {
-        if (bloqueado || !destino) return;
-        bloqueado = true; destino.setView(origen.getCenter(), origen.getZoom(), { animate: false }); bloqueado = false;
-      });
+  function modoMapa(modo) {
+    if (!capas.ini) return;
+    if (modo === 'cambios') {
+      capas.ini.setOpacity(0); capas.fin.setOpacity(1); capas.fin.getElement().style.clipPath = 'none';
+      capas.cambio.setOpacity(1);
+      if (lineaComparacion && mapa.hasLayer(lineaComparacion)) mapa.removeLayer(lineaComparacion);
     }
-    copiar(mapaIni, mapaFin); copiar(mapaFin, mapaIni);
+    else {
+      capas.ini.setOpacity(1);
+      capas.cambio.setOpacity($('ver-cambio').checked ? 1 : 0);
+      actualizarComparacion();
+    }
+    actualizarGuiaMapa(modo);
   }
 
   function montarCapas() {
     limpiarCapas();
-    mapaIni = L.map('mapa-ini', { scrollWheelZoom: false });
-    mapaFin = L.map('mapa-fin', { scrollWheelZoom: false });
-    baseMapas(mapaIni); baseMapas(mapaFin);
+    crearGuiaMapa();
     var url = function (t) { return '/analisis/' + d.id + '/imagen/' + t + '.png'; };
-    capas.ini = L.imageOverlay(url('rgb_inicio'), d.bounds, { opacity: .5, zIndex: 10, alt: 'Imagen satelital ' + d.ano_inicio });
-    capas.fin = L.imageOverlay(url('rgb_fin'), d.bounds, { opacity: .5, zIndex: 10, alt: 'Imagen satelital ' + d.ano_fin });
-    capas.cambio = L.imageOverlay(url('cambio'), d.bounds, { opacity: 0, zIndex: 12, alt: 'Cambios detectados' });
-    capas.ini.addTo(mapaIni); capas.fin.addTo(mapaFin); capas.cambio.addTo(mapaFin);
-    mapaIni.fitBounds(d.bounds); mapaFin.fitBounds(d.bounds); sincronizarMapas();
+    capas.ini = L.imageOverlay(url('rgb_inicio'), d.bounds, { opacity: 1, zIndex: 10, interactive: false, alt: 'Imagen satelital ' + d.ano_inicio });
+    capas.fin = L.imageOverlay(url('rgb_fin'), d.bounds, { opacity: 1, zIndex: 11, interactive: false, alt: 'Imagen satelital ' + d.ano_fin });
+    capas.cambio = L.imageOverlay(url('cambio'), d.bounds, { opacity: 0, zIndex: 12, interactive: false, alt: 'Capa de cambios' });
+    capas.ini.addTo(mapa); capas.fin.addTo(mapa); capas.cambio.addTo(mapa);
+    mapa.fitBounds(d.bounds);
     var cruce = $('cruce'), ver = $('ver-cambio');
-    cruce.value = 50; ver.checked = false; actualizarEquilibrio();
-    cruce.oninput = actualizarEquilibrio;
-    ver.onchange = function () { capas.cambio.setOpacity(ver.checked ? 1 : 0); };
-    setTimeout(function () { mapaIni.invalidateSize(); mapaFin.invalidateSize(); }, 100);
+    cruce.value = 50; ver.checked = false;
+    cruce.oninput = function () { modoMapa('antes'); };
+    ver.onchange = function () { modoMapa('antes'); };
+    $('btn-ver-ini').onclick = function () { cruce.value = 0; modoMapa('antes'); anunciar('Mostrando la imagen del año ' + d.ano_inicio); };
+    $('btn-ver-fin').onclick = function () { cruce.value = 100; modoMapa('antes'); anunciar('Mostrando la imagen del año ' + d.ano_fin); };
   }
 
   /* ------------------------------------------------------------- pestañas */
@@ -78,7 +141,8 @@ var UrbaniaVisor = (function () {
       p.hidden = !sel;
     });
     if (enfocar) $(id).focus();
-    if (id === 'tab-antes' && mapaIni && mapaFin) setTimeout(function () { mapaIni.invalidateSize(); mapaFin.invalidateSize(); }, 80);
+    if (id === 'tab-antes') modoMapa('antes');
+    else if (id === 'tab-cambios') modoMapa('cambios');
     Object.keys(graficos).forEach(function (k) { graficos[k].resize(); });
   }
 
@@ -115,21 +179,34 @@ var UrbaniaVisor = (function () {
     div.appendChild(el('b', valor)); div.appendChild(el('span', etiqueta)); cont.appendChild(div);
   }
 
+  function datoArea(cont, valor, etiqueta) {
+    var div = el('div', undefined, 'dato');
+    div.appendChild(el('b', fmt(valor, ' ha')));
+    div.appendChild(el('span', etiqueta));
+    if (valor !== null && valor !== undefined) {
+      div.appendChild(el('small', 'Aprox. ' + fmt(Number(valor) * 1.4) + ' canchas de fútbol', 'dato-ayuda'));
+    }
+    cont.appendChild(div);
+  }
+
   function cifras() {
     var s = d.stats, i = d.indicadores || {}, c1 = $('res-cifras'), c2 = $('res-indicadores');
     c1.textContent = ''; c2.textContent = '';
-    dato(c1, fmt(s.ha_urbanizadas, ' ha'), 'Nueva superficie urbanizada');
-    dato(c1, fmt(s.ha_verdes_perdidas, ' ha'), 'Vegetación perdida');
-    dato(c1, fmt(s.ha_verdes_ganadas, ' ha'), 'Vegetación ganada');
-    dato(c1, fmt(s.ha_verde_a_urbano, ' ha'), 'Vegetación convertida a urbano');
-    dato(c1, fmt(s.ha_urbanas_inicio, ' ha'), 'Superficie urbana en ' + d.ano_inicio);
-    dato(c1, fmt(s.ha_urbanas_fin, ' ha'), 'Superficie urbana en ' + d.ano_fin);
+    datoArea(c1, s.ha_urbanizadas, 'Nueva superficie urbanizada');
+    datoArea(c1, s.ha_verdes_perdidas, 'Vegetación perdida');
+    datoArea(c1, s.ha_verdes_ganadas, 'Vegetación ganada');
+    datoArea(c1, s.ha_verde_a_urbano, 'Vegetación convertida a urbano');
+    datoArea(c1, s.ha_urbanas_inicio, 'Superficie urbana en ' + d.ano_inicio);
+    datoArea(c1, s.ha_urbanas_fin, 'Superficie urbana en ' + d.ano_fin);
     dato(c1, fmt(s.pct_verde_inicio, ' %') + ' → ' + fmt(s.pct_verde_fin, ' %'), 'Cobertura vegetal');
     dato(c1, fmt(s.pct_pixeles_validos, ' %'), 'Área válida (sin nubes)');
     dato(c2, i.crecimiento_pct === null || i.crecimiento_pct === undefined ? '—' : fmt(i.crecimiento_pct, ' %'), 'Crecimiento de la superficie urbana');
     dato(c2, fmt(i.ha_por_ano, ' ha/año'), 'Ritmo de urbanización');
     dato(c2, i.pct_urbanizado_era_verde === null || i.pct_urbanizado_era_verde === undefined ? '—' : fmt(i.pct_urbanizado_era_verde, ' %'), 'De lo urbanizado, antes era vegetación');
     dato(c2, i.variacion_verde_pp === null || i.variacion_verde_pp === undefined ? '—' : (i.variacion_verde_pp > 0 ? '+' : '') + fmt(i.variacion_verde_pp, ' puntos'), 'Cambio en la cobertura vegetal');
+    $('calidad-analisis').textContent = s.pct_pixeles_validos === null || s.pct_pixeles_validos === undefined
+      ? 'No hay un porcentaje disponible para este análisis.'
+      : 'Se pudo comparar el ' + fmt(s.pct_pixeles_validos, ' %') + ' del área en las dos imágenes. Las zonas con nubes o sombras se excluyeron; los resultados describen el área comparable, no las partes sin datos.';
   }
 
   function graficosStats() {
@@ -141,7 +218,7 @@ var UrbaniaVisor = (function () {
     if (typeof Chart !== 'undefined') {
       graficos.ha = new Chart($('graf-ha'), {
         type: 'bar',
-        data: { labels: etiquetas, datasets: [{ label: 'Hectáreas (estimadas)', data: valores, backgroundColor: ['#bae6fd', '#075985', '#dc2626', '#ffffff', '#7dd3fc'], borderColor: '#333', borderWidth: 1 }] },
+        data: { labels: etiquetas, datasets: [{ label: 'Hectáreas (estimadas)', data: valores, backgroundColor: ['#b9e3f3', '#147da8', '#b4232f', '#d95b63', '#68b9df'], borderColor: '#fff', borderWidth: 1 }] },
         options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
       });
     }
@@ -156,79 +233,29 @@ var UrbaniaVisor = (function () {
         graficos.anillos = new Chart($('graf-anillos'), {
           type: 'bar',
           data: { labels: et, datasets: [
-            { label: d.ano_inicio + ' (%)', data: v1, backgroundColor: '#bae6fd', borderColor: '#333', borderWidth: 1 },
-            { label: d.ano_fin + ' (%)', data: v2, backgroundColor: '#075985', borderColor: '#333', borderWidth: 1 }] },
+            { label: d.ano_inicio + ' (%)', data: v1, backgroundColor: '#b9e3f3', borderColor: '#147da8', borderWidth: 1 },
+            { label: d.ano_fin + ' (%)', data: v2, backgroundColor: '#b4232f', borderColor: '#8f1b25', borderWidth: 1 }] },
           options: { scales: { y: { beginAtZero: true, max: 100 } } }
         });
       }
     } else { caja.hidden = true; }
   }
 
-  function graficoCoberturas() {
-    var caja = $('caja-coberturas'), c = d.cambios && d.cambios.coberturas;
-    if (!c || !c.inicio || !c.fin) { caja.hidden = true; return; }
-    caja.hidden = false;
-    var clases = [
-      { clave: 'vegetacion', nombre: 'Vegetación', color: '#7dd3fc' },
-      { clave: 'urbano', nombre: 'Urbano / construido', color: '#dc2626' },
-      { clave: 'agua', nombre: 'Agua', color: '#075985' },
-      { clave: 'suelo_otras', nombre: 'Suelo / otras coberturas', color: '#ffffff' }
-    ];
-    var filas = [];
-    [['inicio', d.ano_inicio], ['fin', d.ano_fin]].forEach(function (periodo) {
-      clases.forEach(function (clase) {
-        var valor = c[periodo[0]][clase.clave] || { ha: 0, pct: 0 };
-        filas.push([periodo[1], clase.nombre, fmt(valor.ha), fmt(valor.pct, ' %')]);
-      });
-    });
-    tablaAlt('alt-coberturas', ['Año', 'Tipo de cobertura', 'Área estimada (ha)', 'Área válida (%)'], filas);
-    $('graf-coberturas').setAttribute('aria-label', 'Composición del área válida por cobertura. ' +
-      filas.map(function (f) { return f[0] + ', ' + f[1] + ': ' + f[2] + ' hectáreas, ' + f[3]; }).join('; '));
-    if (typeof Chart !== 'undefined') {
-      graficos.coberturas = new Chart($('graf-coberturas'), {
-        type: 'bar',
-        data: {
-          labels: [String(d.ano_inicio), String(d.ano_fin)],
-          datasets: clases.map(function (clase) {
-            return {
-              label: clase.nombre,
-              data: [c.inicio[clase.clave].pct, c.fin[clase.clave].pct],
-              backgroundColor: clase.color,
-              borderColor: '#333',
-              borderWidth: 1
-            };
-          })
-        },
-        options: {
-          indexAxis: 'y',
-          scales: {
-            x: { stacked: true, beginAtZero: true, max: 100, title: { display: true, text: '% del área válida' } },
-            y: { stacked: true }
-          }
-        }
-      });
-    }
-  }
-
   /* ------------------------------------------------------ pestaña de cambios */
   function verEnMapa(p, n) {
-    if (!mapaFin) return;
-    /* El mapa vive en la pestaña de comparación: primero la hacemos visible. */
-    activar('tab-antes', false);
-    setTimeout(function () {
-      var mapa = mapaFin;
-      if (!mapa) return;
-      mapa.invalidateSize();
-      if (resaltado && mapa.hasLayer(resaltado)) mapa.removeLayer(resaltado);
-      var radio = Math.max(Math.sqrt(p.ha * 10000 / Math.PI), 60);
-      resaltado = L.circle([p.lat, p.lng], { radius: radio, color: '#000', weight: 4, fillOpacity: 0, dashArray: '8 5' }).addTo(mapa);
-      var pop = el('div'); pop.appendChild(el('b', p.tipo)); pop.appendChild(document.createElement('br'));
-      pop.appendChild(document.createTextNode(fmt(p.ha) + ' ha · ' + fmt(p.dist_km) + ' km al ' + p.dir_nombre + ' del centro'));
-      resaltado.bindPopup(pop).openPopup();
-      if (reducido()) mapa.setView([p.lat, p.lng], 16); else mapa.flyTo([p.lat, p.lng], 16, { duration: 0.8 });
-      mapa.getContainer().scrollIntoView({ block: 'center', behavior: reducido() ? 'auto' : 'smooth' });
-      anunciar('Mostrando en el mapa la zona ' + n + ': ' + p.tipo + ', ' + fmt(p.ha) + ' hectáreas, a ' + fmt(p.dist_km) + ' kilómetros al ' + p.dir_nombre + ' del centro.');
-    }, 100);
+    if (!mapa) return;
+    if (resaltado) mapa.removeLayer(resaltado);
+    resaltado = L.circleMarker([p.lat, p.lng], {
+      radius: 10, color: '#b4232f', weight: 3, fillColor: '#b9e3f3', fillOpacity: 1
+    }).addTo(mapa);
+    var pop = el('div'); pop.appendChild(el('b', 'Punto de referencia aproximado')); pop.appendChild(document.createElement('br'));
+    pop.appendChild(document.createTextNode(p.tipo + ' · ' + fmt(p.ha) + ' ha · a ' + fmt(p.dist_km) + ' km del centro, hacia el ' + p.dir_nombre.toLowerCase() + '.'));
+    pop.appendChild(document.createElement('br'));
+    pop.appendChild(el('span', 'El punto no representa el contorno exacto de la zona.', 'chico'));
+    resaltado.bindPopup(pop).openPopup();
+    if (reducido()) mapa.setView([p.lat, p.lng], 16); else mapa.flyTo([p.lat, p.lng], 16, { duration: 0.8 });
+    mapa.getContainer().scrollIntoView({ block: 'center', behavior: reducido() ? 'auto' : 'smooth' });
+    anunciar('Punto de referencia aproximado ' + n + ': ' + p.tipo + ', ' + fmt(p.ha) + ' hectáreas. El punto no representa el contorno exacto de la zona.');
   }
 
   function renderZonas(filtro) {
@@ -236,26 +263,19 @@ var UrbaniaVisor = (function () {
     var lista = (d.cambios.parcelas || []).filter(function (p) { return !filtro || p.tipo === filtro; })
       .sort(function (a, b) { return b.ha - a.ha; });
     if (!lista.length) {
-      var tr0 = el('tr'), td0 = el('td', 'No hay zonas de este tipo mayores a ' + fmt(d.cambios.min_ha) + ' ha.'); td0.colSpan = 7;
+      var tr0 = el('tr'), td0 = el('td', 'No hay zonas de este tipo mayores a ' + fmt(d.cambios.min_ha) + ' ha.'); td0.colSpan = 6;
       tr0.appendChild(td0); tb.appendChild(tr0); return;
     }
     lista.forEach(function (p, i) {
-      var tr = el('tr'), ET = ['N.º', 'Tipo de cambio', 'Superficie (ha)', 'Ubicación', 'Qué significa', 'Antes era vegetación', ''];
+      var tr = el('tr'), ET = ['N.º', 'Tipo de cambio', 'Superficie (ha)', 'Ubicación', 'Antes era vegetación', ''];
       tr.appendChild(el('td', String(i + 1)));
       var tdT = el('td'); var sw = el('i', undefined, 'muestra'); sw.style.background = COLOR_TIPO[p.tipo] || '#888'; sw.setAttribute('aria-hidden', 'true');
       tdT.appendChild(sw); tdT.appendChild(document.createTextNode(' ' + p.tipo)); tr.appendChild(tdT);
       tr.appendChild(el('td', fmt(p.ha)));
-      tr.appendChild(el('td', fmt(p.dist_km) + ' km al ' + p.dir_nombre + ' del centro · ' +
-        Number(p.lat).toFixed(5) + ', ' + Number(p.lng).toFixed(5)));
-      var significado = p.tipo === 'Nueva urbanización'
-        ? 'Aparece como superficie construida en el año final.'
-        : p.tipo === 'Pérdida de vegetación'
-          ? 'Tenía vegetación al inicio y ya no se clasifica así al final.'
-          : 'Se detecta vegetación en el año final donde antes no aparecía.';
-      tr.appendChild(el('td', significado));
+      tr.appendChild(el('td', 'A ' + fmt(p.dist_km) + ' km del centro, hacia el ' + p.dir_nombre.toLowerCase()));
       tr.appendChild(el('td', p.tipo === 'Ganancia de vegetación' ? '—' : fmt(p.pct_ex_verde, ' %')));
-      var tdA = el('td'), b = el('button', 'Ver en el mapa', 'btn btn-chico btn-zona'); b.type = 'button';
-      b.setAttribute('aria-label', 'Ver en el mapa la zona ' + (i + 1) + ': ' + p.tipo + ', ' + fmt(p.ha) + ' hectáreas');
+      var tdA = el('td'), b = el('button', 'Ver punto aproximado', 'btn btn-chico btn-zona'); b.type = 'button';
+      b.setAttribute('aria-label', 'Ver el punto de referencia aproximado de la zona ' + (i + 1) + ': ' + p.tipo + ', ' + fmt(p.ha) + ' hectáreas. No representa el contorno exacto.');
       b.addEventListener('click', function () { verEnMapa(p, i + 1); });
       tdA.appendChild(b); tr.appendChild(tdA);
       for (var k = 0; k < tr.children.length; k++) tr.children[k].setAttribute('data-et', ET[k]);
@@ -280,7 +300,7 @@ var UrbaniaVisor = (function () {
     $('filtro-zonas').value = '';
     renderZonas('');
     var dirs = d.cambios.direcciones || [];
-    var etiquetas = dirs.map(function (x) { return x.dir; });
+    var etiquetas = dirs.map(function (x) { return x.nombre; });
     var urb = dirs.map(function (x) { return x.ha_urbanizadas; }), ver = dirs.map(function (x) { return x.ha_verde_perdido; });
     $('graf-dir').setAttribute('aria-label', 'Gráfico de barras de hectáreas por dirección desde el centro. ' + dirs.map(function (x) { return x.nombre + ': ' + fmt(x.ha_urbanizadas) + ' ha urbanizadas'; }).join('; '));
     tablaAlt('alt-dir', ['Dirección', 'Nueva urbanización (ha)', 'Vegetación perdida (ha)'], dirs.map(function (x) { return [x.nombre, fmt(x.ha_urbanizadas), fmt(x.ha_verde_perdido)]; }));
@@ -288,8 +308,8 @@ var UrbaniaVisor = (function () {
       graficos.dir = new Chart($('graf-dir'), {
         type: 'bar',
         data: { labels: etiquetas, datasets: [
-          { label: 'Nueva urbanización (ha)', data: urb, backgroundColor: '#dc2626', borderColor: '#333', borderWidth: 1 },
-          { label: 'Vegetación perdida (ha)', data: ver, backgroundColor: '#ffffff', borderColor: '#333', borderWidth: 1 }] },
+          { label: 'Nueva urbanización (ha)', data: urb, backgroundColor: '#D55E00', borderColor: '#333', borderWidth: 1 },
+          { label: 'Vegetación perdida (ha)', data: ver, backgroundColor: '#F0E442', borderColor: '#333', borderWidth: 1 }] },
         options: { scales: { y: { beginAtZero: true } } }
       });
     }
@@ -334,19 +354,25 @@ var UrbaniaVisor = (function () {
 
   /* ---------------------------------------------------------------- principal */
   function mostrar(m, datos) {
-    d = datos;
+    mapa = m; d = datos;
     Object.keys(graficos).forEach(function (k) { graficos[k].destroy(); }); graficos = {};
     iniciarPestanas();
     $('resultado').hidden = false;
+    var tituloMapa = $('mapa-titulo'), descripcionMapa = $('mapa-descripcion');
+    if (mapa && d.tiene_imagenes && d.bounds) {
+      if (tituloMapa) tituloMapa.textContent = 'Cambios en ' + d.ciudad;
+      if (descripcionMapa) descripcionMapa.textContent = 'El mapa se centra en el área analizada. Use las pestañas para comparar los años o ver los cambios detectados.';
+      if ($('mapa-cantidad')) $('mapa-cantidad').textContent = 'Área analizada: ' + d.ciudad + ' · ' + d.ano_inicio + ' a ' + d.ano_fin + '.';
+    }
     $('res-titulo').textContent = 'Resultados: ' + d.ciudad + ' ' + d.ano_inicio + ' a ' + d.ano_fin + (d.es_demo ? ' (registro de prueba)' : '');
     $('res-resumen').textContent = d.resumen || '';
     $('lbl-ini').textContent = d.ano_inicio; $('lbl-fin').textContent = d.ano_fin;
     $('lbl-ini-b').textContent = d.ano_inicio; $('lbl-fin-b').textContent = d.ano_fin;
 
-    var hayVisor = !!(d.tiene_imagenes && d.bounds);
+    var hayVisor = !!(mapa && d.tiene_imagenes && d.bounds);
     $('tab-antes').hidden = !hayVisor; $('tab-cambios').hidden = !hayVisor;
     if (hayVisor) montarCapas(); else limpiarCapas();
-    cifras(); graficosStats(); graficoCoberturas(); pestanaCambios(); escenas(); informe(); voz();
+    cifras(); graficosStats(); pestanaCambios(); escenas(); informe(); voz();
     activar(hayVisor ? 'tab-antes' : 'tab-stats', false);
   }
 

@@ -169,16 +169,14 @@ def procesar(lon, lat, radio_km, anio_a, anio_b, mes_desde, mes_hasta, max_nubes
 
     cls_a, cls_b = an.clasificar(bandas_a), an.clasificar(bandas_b)
     try:
-        stats, anillos, mascaras, coberturas = an.comparar(cls_a, cls_b, radio_km)
+        stats, anillos, mascaras = an.comparar(cls_a, cls_b, radio_km)
     except ValueError as e:
         raise ErrorSatelital(str(e)) from e
 
     rgb_a, rgb_b = an.rgb_png(bandas_a), an.rgb_png(bandas_b)
     cambio = an.overlay_png(mascaras)
-    cambios = an.detalle_cambios(mascaras, grilla)
-    cambios["coberturas"] = coberturas
     return {
-        "cambios": cambios,
+        "cambios": an.detalle_cambios(mascaras, grilla),
         "escena_inicio": metadatos(item_a),
         "escena_fin": metadatos(item_b),
         "stats": stats,

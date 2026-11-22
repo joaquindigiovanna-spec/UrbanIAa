@@ -108,7 +108,7 @@ def clasificar(b):
 # ------------------------------------------------------------- comparación
 def comparar(cls_a, cls_b, radio_km):
     """
-    Compara dos clasificaciones de la misma grilla. Devuelve (stats, anillos, mascaras, coberturas).
+    Compara dos clasificaciones de la misma grilla. Devuelve (stats, anillos, mascaras).
     Solo se cuentan píxeles válidos en AMBAS fechas.
     """
     valido = (cls_a != CL_INVALIDO) & (cls_b != CL_INVALIDO)
@@ -120,8 +120,6 @@ def comparar(cls_a, cls_b, radio_km):
     urb_b = _mayoria(cls_b == CL_URBANO) & valido
     veg_a = _mayoria(cls_a == CL_VEG) & valido
     veg_b = _mayoria(cls_b == CL_VEG) & valido
-    agua_a = _mayoria(cls_a == CL_AGUA) & valido
-    agua_b = _mayoria(cls_b == CL_AGUA) & valido
 
     nuevas = urb_b & ~urb_a
     verde_perdido = veg_a & ~veg_b
@@ -143,25 +141,6 @@ def comparar(cls_a, cls_b, radio_km):
         "pct_verde_inicio": round(100.0 * float(veg_a.sum()) / n_valido, 1),
         "pct_verde_fin": round(100.0 * float(veg_b.sum()) / n_valido, 1),
     }
-
-    def cobertura(urbano, vegetacion, agua):
-        suelo_otras = valido & ~(urbano | vegetacion | agua)
-        clases = {
-            "vegetacion": vegetacion,
-            "urbano": urbano,
-            "agua": agua,
-            "suelo_otras": suelo_otras,
-        }
-        return {
-            nombre: {
-                "ha": ha(mascara),
-                "pct": round(100.0 * float(mascara.sum()) / n_valido, 1),
-            }
-            for nombre, mascara in clases.items()
-        }
-
-    coberturas = {"inicio": cobertura(urb_a, veg_a, agua_a),
-                  "fin": cobertura(urb_b, veg_b, agua_b)}
 
     # Distribución de áreas verdes: % de vegetación por anillo de 1 km desde el centro
     n = cls_a.shape[0]
@@ -185,7 +164,7 @@ def comparar(cls_a, cls_b, radio_km):
     mascaras = {"nuevas": nuevas, "verde_perdido": verde_perdido,
                 "verde_ganado": verde_ganado, "verde_a_urbano": verde_a_urbano,
                 "valido": valido, "veg_a": veg_a, "urb_a": urb_a}
-    return stats, anillos, mascaras, coberturas
+    return stats, anillos, mascaras
 
 
 # ------------------------------------------------------------------ imágenes
@@ -203,12 +182,12 @@ def rgb_png(b):
     return _png(img)
 
 
-# Paleta de cambios: rojo para urbanización, blanco para pérdida vegetal y celeste para ganancia.
+# Paleta apta para daltonismo (basada en Okabe-Ito). La leyenda de la interfaz usa los mismos valores.
 COLORES_CAMBIO = {
-    "nueva_urbanizacion": (220, 38, 38),
-    "verde_a_urbano": (153, 27, 27),
-    "verde_perdido": (255, 255, 255),
-    "verde_ganado": (125, 211, 252),
+    "nueva_urbanizacion": (213, 94, 0),     # bermellón  #D55E00
+    "verde_a_urbano": (122, 31, 92),        # púrpura    #7A1F5C
+    "verde_perdido": (240, 228, 66),        # amarillo   #F0E442
+    "verde_ganado": (0, 114, 178),          # azul       #0072B2
 }
 
 
